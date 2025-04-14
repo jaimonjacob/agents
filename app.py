@@ -132,7 +132,19 @@ team = SelectorGroupChat(
 
 # Streamlit input for task  
 task = st.text_input("Enter a task for the agents:", "write a joke")  
+
+# Display agent names and icons in the sidebar  
+st.sidebar.markdown("### Agents and Their Roles")  
+agent_roles = {  
+    "PlanningAgent": ("🧠", "Responsible for planning tasks."),  
+    "Joke_writer": ("✍️", "Writes and edits jokes."),  
+    "Joke_reviewer": ("🔍", "Reviews jokes for appropriateness."),  
+    "Joke_length_checker": ("📏", "Ensures jokes are under 200 characters."),  
+}  
   
+for agent, (icon, role) in agent_roles.items():  
+    st.sidebar.markdown(f"{icon} **{agent}**: {role}")   
+
 # Button to start the conversation  
 if st.button("Run Conversation"):  
     st.write("Running the conversation...")  
