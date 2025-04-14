@@ -43,7 +43,7 @@ if model_choice == "Azure":
     )  
 elif model_choice == "Gemini":  
     model_client = OpenAIChatCompletionClient(  
-        model="gemini-1.5-flash-8b",  
+        model="gemini-2.0-flash",  
         api_key=os.getenv("GEMINI_API_KEY"),  
         api_type="gemini",  
     )  
@@ -90,6 +90,8 @@ planning_agent = AssistantAgent(
 
     When assigning tasks, use this format:
     1. <agent>: <task>
+    2. <agent>: <task>
+    etc...
 
     After assigning tasks, wait for responses from the agents and ensure all subtasks are completed. After all tasks are complete, summarize the findings and end with "TERMINATE".
     """,
@@ -98,8 +100,7 @@ planning_agent = AssistantAgent(
 Joke_writer = AssistantAgent(
     "Joke_writer",
     model_client=model_client,
-    system_message="You are a helpful AI assistant which firest fetches a random joke using 'fetch_random_joke' tool. And then edit it appropriately",
-    tools=[fetch_tool],
+    system_message="You are a helpful AI assistant which writes the joke and edits it appropriately"    
 )
 
 # Create the Reviewer agent.
