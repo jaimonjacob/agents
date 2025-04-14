@@ -147,14 +147,15 @@ if st.button("Run Conversation"):
         "Unknown": "❓"  
     }  
   
-    # Async function to handle the conversation  
     async def run_conversation():  
-        terminated = False  # Flag to track termination  
+        terminated = False  
         try:  
             async for message in team.run_stream(task=task):  
-                print(message)
+                print(message)  
+    
                 sender = getattr(message, "source", "Unknown")  
-                
+    
+                # Handle regular text content  
                 if hasattr(message, "content") and message.content:  
                     content = message.content  
                     if isinstance(content, list):  
@@ -164,12 +165,14 @@ if st.button("Run Conversation"):
                     else:  
                         content = str(content).strip()  
     
+                    # Check for termination  
                     if "TERMINATE" in content:  
-                        terminated = True  # set flag, but do NOT stop immediately  
+                        terminated = True  
     
                     with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):  
                         st.write(content)  
     
+                # Handle tool calls  
                 elif hasattr(message, "tool_calls") and message.tool_calls:  
                     with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):  
                         for tool_call in message.tool_calls:  
@@ -178,16 +181,30 @@ if st.button("Run Conversation"):
                             st.markdown(f"Calling function `{function_name}` with arguments:")  
                             st.code(function_args, language="json")  
     
-                else:  
+                # Explicitly handle TaskResult messages  
+                elif message.__class__.__name__ == "TaskResult":  
+                    terminated = True  
                     with st.chat_message("System", avatar=agent_avatars.get("System")):  
-                        st.warning("⚠️ Received an unexpected message type.")  
+                        st.success("✅ Task Completed Successfully!")  
+                        st.markdown(f"**Stop reason:** {message.stop_reason}")  
+                        st.markdown("**Conversation Summary:**")  
+                        for msg in message.messages:  
+                            msg_source = getattr(msg, "source", "Unknown")  
+                            msg_content = getattr(msg, "content", "")  
+                            if isinstance(msg_content, list):  
+                                msg_content = "\n\n".join([str(item).strip() for item in msg_content])  
+                            st.markdown(f"- **{msg_source}**: {msg_content}")  
+    
+                else:  
+                    # Fallback for any other unexpected message types  
+                    with st.chat_message("System", avatar=agent_avatars.get("System")):  
+                        st.warning(f"⚠️ Received an unexpected message type: {message.type}")  
     
             if terminated:  
                 with st.chat_message("System", avatar=agent_avatars.get("System")):  
-                    st.success("✅ Conversation completed successfully.")  
+                    st.success("✅ Conversation fully completed.")  
     
         except Exception as e:  
-            st.error(f"An error occurred: {e}") 
-  
+            st.error(f"An error occurred: {e}")  
     # Execute the async conversation function  
     asyncio.run(run_conversation())  
