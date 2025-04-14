@@ -152,6 +152,7 @@ if st.button("Run Conversation"):
         terminated = False  # Flag to track termination  
         try:  
             async for message in team.run_stream(task=task):  
+                print(message)
                 sender = getattr(message, "source", "Unknown")  
                 
                 if hasattr(message, "content") and message.content:  
