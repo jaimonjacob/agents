@@ -1,5 +1,8 @@
+from autogen_ext.auth.azure import AzureTokenProvider
+from autogen_ext.models.openai import AzureOpenAIChatCompletionClient
+from azure.identity import DefaultAzureCredential
 from autogen_ext.models.openai import OpenAIChatCompletionClient
-# from autogen_ext.models.ollama import OllamaChatCompletionClient
+from autogen_ext.models.ollama import OllamaChatCompletionClient
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_agentchat.teams import SelectorGroupChat
@@ -15,17 +18,43 @@ import streamlit as st
 st.title("AutoGen Chat Agents")
 st.write("This app visualizes the conversation between agents working collaboratively.")
 
-load_dotenv()
+ 
+# Load environment variables  
+load_dotenv()  
+  
+# Sidebar selector to choose model  
+model_choice = st.sidebar.selectbox(  
+    "Select your model:",  
+    ["Azure", "Gemini", "Ollama"]  
+)  
+  
+# Initialize model_client based on selection  
+if model_choice == "Azure":  
+    token_provider = AzureTokenProvider(  
+        DefaultAzureCredential(),  
+        "https://cognitiveservices.azure.com/.default",  
+    )  
+    model_client = AzureOpenAIChatCompletionClient(  
+        azure_deployment="gpt-4.5-preview",  
+        model="gpt-4.5-preview",  
+        api_version="2024-12-01-preview",  
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),  
+        api_key=os.getenv("AZURE_OPENAI_KEY")  
+    )  
+elif model_choice == "Gemini":  
+    model_client = OpenAIChatCompletionClient(  
+        model="gemini-1.5-flash-8b",  
+        api_key=os.getenv("GEMINI_API_KEY"),  
+        api_type="gemini",  
+    )  
+elif model_choice == "Ollama":  
+    model_client = OllamaChatCompletionClient(  
+        model="llama3.2:1b",  
+    )  
+  
+st.sidebar.write(f"Current model: **{model_choice}**")  
 
-model_client = OpenAIChatCompletionClient(
-    model="gemini-1.5-flash-8b",    
-    api_key=os.getenv("GEMINI_API_KEY"),
-    api_type="gemini",
-)
 
-# model_client = OllamaChatCompletionClient(
-#     model="llama3.2:1b",        
-# )
 
 def fetch_random_joke():
     """Fetches a random joke from the official-joke-api."""
@@ -101,54 +130,63 @@ team = SelectorGroupChat(
 
 
 
-# Streamlit input for task
-task = st.text_input("Enter a task for the agents:", "write a joke")
-
-# Button to start the conversation
-if st.button("Run Conversation"):
-    st.write("Running the conversation...")
+# Streamlit input for task  
+task = st.text_input("Enter a task for the agents:", "write a joke")  
+  
+# Button to start the conversation  
+if st.button("Run Conversation"):  
+    st.write("Running the conversation...")  
+  
+    # Define agent avatars  
+    agent_avatars = {  
+        "PlanningAgent": "🧠",  
+        "Joke_writer": "✍️",  
+        "Joke_reviewer": "🔍",  
+        "Joke_length_checker": "📏",  
+        "System": "⚙️",  
+        "Unknown": "❓"  
+    }  
+  
+    # Async function to handle the conversation  
+    async def run_conversation():  
+        terminated = False  # Flag to track termination  
+        try:  
+            async for message in team.run_stream(task=task):  
+                sender = getattr(message, "source", "Unknown")  
+                
+                if hasattr(message, "content") and message.content:  
+                    content = message.content  
+                    if isinstance(content, list):  
+                        content = "\n\n".join([str(item).strip() for item in content])  
+                    elif isinstance(content, str):  
+                        content = content.strip()  
+                    else:  
+                        content = str(content).strip()  
     
-    # Placeholder for conversation messages
-    conversation_placeholder = st.empty()
-
-    # Define a mapping of agent names to avatars
-    agent_avatars = {
-        "PlanningAgent": "🧠",
-        "Joke_writer": "✍️",
-        "Joke_reviewer": "🔍",
-        "Joke_length_checker": "📏",
-        "Unknown": "❓"
-    }
+                    if "TERMINATE" in content:  
+                        terminated = True  # set flag, but do NOT stop immediately  
     
+                    with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):  
+                        st.write(content)  
     
-    # Define a function to run the conversation
-    async def run_conversation():
-        messages = []
-        try:
-            # Stream messages from the team
-            async for message in team.run_stream(task=task):
-                # Check if the message has a 'content' attribute
-                if hasattr(message, "content"):
-                    # Extract sender (agent name) and content
-                    sender = getattr(message, "source", "Unknown")  # Use 'source' or fallback to 'Unknown'
-                    content = message.content
-
-                    # Get the avatar for the sender
-                    avatar = agent_avatars.get(sender, "❓")
-
-                    # Append and display messages in real-time
-                    messages.append(f"{avatar} **{sender}**: {content}")
-                else:
-                    # Handle cases where the message does not have 'content'
-                    messages.append("⚠️ **System**: Received an unexpected message type.")
-
-                # Update the conversation in real-time
-                conversation_placeholder.markdown("\n\n".join(messages))  # Use markdown for better formatting
-        except Exception as e:
-            st.error(f"An error occurred: {e}")
-
-    # Use asyncio to run the async function
-
-    asyncio.run(run_conversation())
-
-   
+                elif hasattr(message, "tool_calls") and message.tool_calls:  
+                    with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):  
+                        for tool_call in message.tool_calls:  
+                            function_name = tool_call.function.name  
+                            function_args = tool_call.function.arguments  
+                            st.markdown(f"Calling function `{function_name}` with arguments:")  
+                            st.code(function_args, language="json")  
+    
+                else:  
+                    with st.chat_message("System", avatar=agent_avatars.get("System")):  
+                        st.warning("⚠️ Received an unexpected message type.")  
+    
+            if terminated:  
+                with st.chat_message("System", avatar=agent_avatars.get("System")):  
+                    st.success("✅ Conversation completed successfully.")  
+    
+        except Exception as e:  
+            st.error(f"An error occurred: {e}") 
+  
+    # Execute the async conversation function  
+    asyncio.run(run_conversation())  
