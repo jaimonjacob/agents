@@ -11,16 +11,12 @@ import os
 from dotenv import load_dotenv
 from autogen_ext.tools.langchain import LangChainToolAdapter
 from langchain_community.document_loaders import WebBaseLoader
-import bs4
 from langchain.tools import Tool  # Import the Tool class
-import requests
 import streamlit as st
 
-
-
 # Streamlit UI
-st.title("AutoGen Chat Agents")
-st.write("This app visualizes the conversation between agents working collaboratively.")
+st.title("AutoGen Multi-agent System")
+st.write("This app visualizes the conversation between agents working collaboratively to create a FAQ from a URL.")
 
  
 # Load environment variables  
@@ -58,13 +54,17 @@ elif model_choice == "Ollama":
   
 st.sidebar.write(f"Current model: **{model_choice}**")  
 
-
 def fetch_url_text_tool(url: str) -> str:
-    """Fetch the main text content from a webpage."""    
-    loader = WebBaseLoader(url)
-    docs = loader.load()
-    print (docs[0].page_content if docs else "No content found at the URL.")
-    return docs[0].page_content if docs else "No content found at the URL."
+    """Fetch the main text content from a webpage."""
+    try:
+        loader = WebBaseLoader(url)
+        docs = loader.load()
+        if docs and docs[0].page_content.strip():
+            return docs[0].page_content
+        else:
+            return "Error: No content found at the provided URL."
+    except Exception as e:
+        return f"Error: Failed to fetch content from the URL. Details: {str(e)}"
 
 # Wrap the function in a LangChain Tool
 fetch_url_text_tool_wrapped = Tool(
@@ -81,9 +81,9 @@ project_planner = AssistantAgent(
     model_client=model_client,
     description="An agent for planning tasks, this agent should be the first to engage when given a new task.",
     system_message="""
-    You are a planning agent.
+    You are a planning agent. Always mention what's your role.
     You only plan and delegate tasks - you do not execute them yourself. You can engage team members multiple times so that a perfect Joke is provided.
-    Your team members are CrawlerAgent, indexer, qa_gen, and verifier.    
+    Your team members are CrawlerAgent, indexer, FAQ_generator, and verifier.    
     After assigning tasks, wait for responses from the agents and ensure all subtasks are completed. After all tasks are complete, summarize the findings and end with "TERMINATE". Do not mention "TERMINATE" before that.
     """           
 )
@@ -92,26 +92,26 @@ project_planner = AssistantAgent(
 crawler = AssistantAgent(
     name="CrawlerAgent",
     model_client=model_client,
-    system_message="You are responsible for extracting useful text from a given URL using the fetch_url_text tool.",
+    system_message="You are responsible for extracting useful text from a given URL using the fetch_url_text tool. Always mention what's your role and how you will address the current task.",
     tools=[fetch_url_text]  # 👈 tool added here
 )
 
 indexer = AssistantAgent(
     name="IndexerAgent",
     model_client=model_client,
-    system_message="You organize content into tagged categories and prepare it for Q&A generation."
+    system_message="You organize content into tagged categories and prepare it for Q&A generation. Always mention what's your role and how you will address the current task."
 )
 
-qa_gen = AssistantAgent(
-    name="QAGeneratorAgent",
+FAQ_generator = AssistantAgent(
+    name="FAQGeneratorAgent",
     model_client=model_client,
-    system_message="You generate helpful Q&A pairs for each category."
+    system_message="You generate helpful Q&A pairs for each category. Always mention what's your role and how you will address the current task."
 )
 
 verifier = AssistantAgent(
     name="VerifierAgent",
     model_client=model_client,
-    system_message="You polish, deduplicate, and validate the final Q&A content."
+    system_message="You polish, deduplicate, and validate the final Q&A content. Always mention what's your role and how you will address the current task."
 )
 
 
@@ -122,7 +122,7 @@ max_messages_termination = MaxMessageTermination(max_messages=10)
 termination = text_mention_termination | max_messages_termination
 
 team = SelectorGroupChat(
-    [project_planner, crawler, indexer, qa_gen, verifier],    
+    [project_planner, crawler, indexer, FAQ_generator, verifier],    
     termination_condition=termination,
     model_client=model_client,
     allow_repeated_speaker=True,  
@@ -131,7 +131,7 @@ team = SelectorGroupChat(
 
 
 # Streamlit input for task  
-url = st.text_input("Enter a:", "write a joke")  
+url = st.text_input("Add the URL here", "https://en.wikipedia.org/wiki/How_Brown_Saw_the_Baseball_Game")  
 
 task = f"""
     Please build a structured knowledge base from the following URL:
@@ -152,29 +152,31 @@ task = f"""
     ]
 """
 # Display agent names and icons in the sidebar  
-st.sidebar.markdown("### Agents and Their Roles")  
+st.sidebar.markdown("### Agents and their Roles")  
 agent_roles = {  
-    "PlanningAgent": ("🧠", "Responsible for planning tasks."),  
-    "Joke_writer": ("✍️", "Writes and edits jokes."),  
-    "Joke_reviewer": ("🔍", "Reviews jokes for appropriateness."),  
-    "Joke_length_checker": ("📏", "Ensures jokes are under 200 characters."),  
-}  
-  
+    "ProjectPlanner": ("👨‍💼", "Responsible for planning tasks."),  
+    "CrawlerAgent": ("💂‍♀️", "Extracts useful text from a given URL."),  
+    "IndexerAgent": ("👩‍✈️", "Organizes content into tagged categories."),  
+    "FAQGeneratorAgent": ("🦸‍♂️", "Generates helpful Q&A pairs for each category."),  
+    "VerifierAgent": ("👩‍🚒", "Polishes, deduplicates, and validates the final Q&A content."),  
+    "System": ("⚙", "Handles system-level operations."),  
+    "Unknown": ("❓", "Represents an unidentified agent.")  
+}
 for agent, (icon, role) in agent_roles.items():  
     st.sidebar.markdown(f"{icon} **{agent}**: {role}")   
 
 # Button to start the conversation  
-if st.button("Run Conversation"):  
-    st.write("Running the conversation...")  
+if st.button("Run task"):  
+    st.write("Running the task...")  
   
     # Define agent avatars  
     agent_avatars = {  
-        "project_planner": "🧠",  
-        "crawler": "✍️",  
-        "indexer": "🔍",  
-        "qa_gen": "📏",  
-        "verifier": "✔",
-        "System": "⚙️",  
+        "ProjectPlanner": "👨‍💼",  
+        "CrawlerAgent": "💂‍♀️",  
+        "IndexerAgent": "👩‍✈️",  
+        "FAQGeneratorAgent": "🦸‍♂️",  
+        "VerifierAgent": "👩‍🚒",
+        "System": "⚙",  
         "Unknown": "❓"  
     }  
   
@@ -200,8 +202,14 @@ if st.button("Run Conversation"):
                     if "TERMINATE" in content:  
                         terminated = True  
     
-                    with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):  
-                        st.write(content)  
+                    # Check for error messages from the fetch_url_text_tool
+                    if content.startswith("Error:"):
+                        with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):
+                            st.error(content)
+                    else:
+                        with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):
+                            st.write(content)
+
     
                 # Handle tool calls  
                 elif hasattr(message, "tool_calls") and message.tool_calls:  
