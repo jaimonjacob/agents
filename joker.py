@@ -8,15 +8,11 @@ from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermi
 from autogen_agentchat.teams import SelectorGroupChat
 import asyncio
 import os
+from autogen_agentchat.ui import Console
 from dotenv import load_dotenv
-from autogen_ext.tools.langchain import LangChainToolAdapter
-from langchain_community.document_loaders import WebBaseLoader
-import bs4
-from langchain.tools import Tool  # Import the Tool class
+from autogen_core.tools import FunctionTool
 import requests
 import streamlit as st
-
-
 
 # Streamlit UI
 st.title("AutoGen Chat Agents")
@@ -59,61 +55,80 @@ elif model_choice == "Ollama":
 st.sidebar.write(f"Current model: **{model_choice}**")  
 
 
-def fetch_url_text_tool(url: str) -> str:
-    """Fetch the main text content from a webpage."""    
-    loader = WebBaseLoader(url)
-    docs = loader.load()
-    print (docs[0].page_content if docs else "No content found at the URL.")
-    return docs[0].page_content if docs else "No content found at the URL."
 
-# Wrap the function in a LangChain Tool
-fetch_url_text_tool_wrapped = Tool(
-    name="fetch_url_text",
-    func=fetch_url_text_tool,
-    description="Fetch the main text content from a webpage."
-)
+def fetch_random_joke():
+    """Fetches a random joke from the official-joke-api."""
+    try:
+        response = requests.get("https://official-joke-api.appspot.com/random_joke", timeout=10) # Add timeout
+        response.raise_for_status() # Raise an exception for bad status codes
+        joke = response.json()
+        return f"{joke['setup']} - {joke['punchline']}"
+    except requests.exceptions.RequestException as e:
+        return f"Failed to fetch a joke: {e}"
+    except Exception as e: # Catch other potential errors like JSON decoding
+        return f"An error occurred while processing the joke: {e}"
 
+def calculate_text_length(text: str) -> str:
+    return f"The text length is {len(text)} characters."
 
-fetch_url_text = LangChainToolAdapter(fetch_url_text_tool_wrapped)
+length_tool = FunctionTool(calculate_text_length, description="Calculate length of characters in the Joke")
+fetch_tool =  FunctionTool(fetch_random_joke, description="Fetch a random joke from an API")
 
-project_planner = AssistantAgent(
-    name="ProjectPlanner",
-    model_client=model_client,
+planning_agent = AssistantAgent(
+    "PlanningAgent",
     description="An agent for planning tasks, this agent should be the first to engage when given a new task.",
+    model_client=model_client,
     system_message="""
     You are a planning agent.
+    Your job is to break down complex tasks into smaller, manageable subtasks.
+    Your team members are:
+        Joke_writer: Writes the joke and make corrections.
+        Joke_reviewer: Checks if the joke is suitable for audience. It doesn't write the joke, only provide feedback and improvements.
+        Joke_length_checker: Checks if the joke length is under 200 characters in length. It doesn't write the joke, only provide to suggestion on the length.        
+
     You only plan and delegate tasks - you do not execute them yourself. You can engage team members multiple times so that a perfect Joke is provided.
-    Your team members are CrawlerAgent, indexer, qa_gen, and verifier.    
-    After assigning tasks, wait for responses from the agents and ensure all subtasks are completed. After all tasks are complete, summarize the findings and end with "TERMINATE". Do not mention "TERMINATE" before that.
-    """           
+
+    When assigning tasks, use this format:
+    1. <agent>: <task>
+    2. <agent>: <task>
+    etc...
+
+    After assigning tasks, wait for responses from the agents and ensure all subtasks are completed. After all tasks are complete, summarize the findings and end with "TERMINATE".
+    """,
 )
 
-
-crawler = AssistantAgent(
-    name="CrawlerAgent",
+Joke_writer = AssistantAgent(
+    "Joke_writer",
     model_client=model_client,
-    system_message="You are responsible for extracting useful text from a given URL using the fetch_url_text tool.",
-    tools=[fetch_url_text]  # 👈 tool added here
+    system_message="You are a helpful AI assistant which writes the joke and edits it appropriately"    
 )
 
-indexer = AssistantAgent(
-    name="IndexerAgent",
+# Create the Reviewer agent.
+Joke_reviewer = AssistantAgent(
+    "Joke_reviewer",
     model_client=model_client,
-    system_message="You organize content into tagged categories and prepare it for Q&A generation."
+    system_message="You are a helpful AI assistant which checks if the joke is suitable for all audience and give feedback so that the joke doesnt offend anyone" 
 )
 
-qa_gen = AssistantAgent(
-    name="QAGeneratorAgent",
+Joke_length_checker = AssistantAgent(
+    "Joke_length_checker",
     model_client=model_client,
-    system_message="You generate helpful Q&A pairs for each category."
+    system_message="You need to ensure that the length of the joke is under 200 characters in length. You can calculate the length of the joke using the 'calculate_text_length' tool. As to reduce the length of the character length if more",
+    tools=[length_tool],
 )
 
-verifier = AssistantAgent(
-    name="VerifierAgent",
-    model_client=model_client,
-    system_message="You polish, deduplicate, and validate the final Q&A content."
-)
 
+selector_prompt = """Select an agent to perform task.
+
+{roles}
+
+Current conversation context:
+{history}
+
+Read the above conversation, then select an agent from {participants} to perform the next task.
+Make sure the planner agent has assigned tasks before other agents start working.
+Only select one agent.
+"""
 
 
 # Define a termination condition that stops the task if the critic approves.
@@ -122,35 +137,18 @@ max_messages_termination = MaxMessageTermination(max_messages=10)
 termination = text_mention_termination | max_messages_termination
 
 team = SelectorGroupChat(
-    [project_planner, crawler, indexer, qa_gen, verifier],    
-    termination_condition=termination,
+    [planning_agent, Joke_writer, Joke_reviewer, Joke_length_checker],
     model_client=model_client,
-    allow_repeated_speaker=True,  
+    termination_condition=termination,
+    selector_prompt=selector_prompt,
+    allow_repeated_speaker=True,  # Allow an agent to speak multiple turns in a row.
 )
 
 
 
 # Streamlit input for task  
-url = st.text_input("Enter a:", "write a joke")  
+task = st.text_input("Enter a task for the agents:", "write a joke")  
 
-task = f"""
-    Please build a structured knowledge base from the following URL:
-
-    {url}
-
-    Use the fetch_url_text tool to retrieve the content, then analyze it.
-
-    Break down into categories and generate Q&A pairs like:
-    [
-        {{
-            "category": "Overview",
-            "questions": [
-                {{"question": "What is cybersecurity?", "answer": "..."}}
-            ]
-        }},
-        ...
-    ]
-"""
 # Display agent names and icons in the sidebar  
 st.sidebar.markdown("### Agents and Their Roles")  
 agent_roles = {  
@@ -169,11 +167,10 @@ if st.button("Run Conversation"):
   
     # Define agent avatars  
     agent_avatars = {  
-        "project_planner": "🧠",  
-        "crawler": "✍️",  
-        "indexer": "🔍",  
-        "qa_gen": "📏",  
-        "verifier": "✔",
+        "PlanningAgent": "🧠",  
+        "Joke_writer": "✍️",  
+        "Joke_reviewer": "🔍",  
+        "Joke_length_checker": "📏",  
         "System": "⚙️",  
         "Unknown": "❓"  
     }  
