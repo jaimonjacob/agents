@@ -19,7 +19,7 @@ from streamlit_avatar import avatar
 
 
 # Streamlit UI
-st.title("AutoGen Multi-agent System")
+st.title("AutoGen Multi-Agent System")
 st.write("This app visualizes the conversation between agents working collaboratively to create a FAQ from a URL.")
 
  
@@ -231,7 +231,7 @@ agent_avatars = [
             "url": "icons/unknown_avatar.png",
             "size": 40,
             "title": "Unknown",
-            "caption": "Handles system-level operations",
+            "caption": "Any system errors",
             "key": "Unknown",
         },
     ]
