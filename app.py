@@ -13,6 +13,10 @@ from autogen_ext.tools.langchain import LangChainToolAdapter
 from langchain_community.document_loaders import WebBaseLoader
 from langchain.tools import Tool  # Import the Tool class
 import streamlit as st
+from bs4 import BeautifulSoup
+import re
+from streamlit_avatar import avatar
+
 
 # Streamlit UI
 st.title("AutoGen Multi-agent System")
@@ -25,7 +29,8 @@ load_dotenv()
 # Sidebar selector to choose model  
 model_choice = st.sidebar.selectbox(  
     "Select your model:",  
-    ["Azure", "Gemini", "Ollama"]  
+    ["Gemini", "Azure", "Ollama"] ,
+     
 )  
   
 # Initialize model_client based on selection  
@@ -54,17 +59,31 @@ elif model_choice == "Ollama":
   
 st.sidebar.write(f"Current model: **{model_choice}**")  
 
+def fetch_url_text_tool(url: str) -> str:from bs4 import BeautifulSoup
+import re
+
+def clean_text(text: str) -> str:
+    """Remove unnecessary characters and whitespace."""
+    text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+    return text.strip()
+
 def fetch_url_text_tool(url: str) -> str:
-    """Fetch the main text content from a webpage."""
+    """Fetch the main text content from a webpage and clean it."""
     try:
         loader = WebBaseLoader(url)
         docs = loader.load()
+        
         if docs and docs[0].page_content.strip():
-            return docs[0].page_content
+            # Use BeautifulSoup to strip out HTML tags
+            soup = BeautifulSoup(docs[0].page_content, "html.parser")
+            main_text = soup.get_text()
+            
+            return clean_text(main_text)
         else:
             return "Error: No content found at the provided URL."
     except Exception as e:
         return f"Error: Failed to fetch content from the URL. Details: {str(e)}"
+
 
 # Wrap the function in a LangChain Tool
 fetch_url_text_tool_wrapped = Tool(
@@ -151,35 +170,96 @@ task = f"""
         ...
     ]
 """
-# Display agent names and icons in the sidebar  
-st.sidebar.markdown("### Agents and their Roles")  
-agent_roles = {  
-    "ProjectPlanner": ("👨‍💼", "Responsible for planning tasks."),  
-    "CrawlerAgent": ("💂‍♀️", "Extracts useful text from a given URL."),  
-    "IndexerAgent": ("👩‍✈️", "Organizes content into tagged categories."),  
-    "FAQGeneratorAgent": ("🦸‍♂️", "Generates helpful Q&A pairs for each category."),  
-    "VerifierAgent": ("👩‍🚒", "Polishes, deduplicates, and validates the final Q&A content."),  
-    "System": ("⚙", "Handles system-level operations."),  
-    "Unknown": ("❓", "Represents an unidentified agent.")  
-}
-for agent, (icon, role) in agent_roles.items():  
-    st.sidebar.markdown(f"{icon} **{agent}**: {role}")   
+#Display agent names and icons in the sidebar  
+# st.sidebar.markdown("### Agents and their Roles")  
+# agent_roles = {  
+#     "ProjectPlanner": ("👨‍💼", "Responsible for planning tasks."),  
+#     "CrawlerAgent": ("💂‍♀️", "Extracts useful text from a given URL."),  
+#     "IndexerAgent": ("👩‍✈️", "Organizes content into tagged categories."),  
+#     "FAQGeneratorAgent": ("🦸‍♂️", "Generates helpful Q&A pairs for each category."),  
+#     "VerifierAgent": ("👩‍🚒", "Polishes, deduplicates, and validates the final Q&A content."),  
+#     "System": ("⚙", "Handles system-level operations."),  
+#     "Unknown": ("❓", "Represents an unidentified agent.")  
+# }
+# for agent, (icon, role) in agent_roles.items():  
+#     st.sidebar.markdown(f"{icon} **{agent}**: {role}")   
+
+agent_avatars = [
+        {
+            "url": "icons/project_planner_avatar.png",
+            "size": 40,
+            "title": "ProjectPlanner",
+            "caption": "Responsible for planning tasks",
+            "key": "project_planner",
+        },
+        {
+            "url": "icons/crawler_avatar.png",
+            "size": 40,
+            "title": "CrawlerAgent",
+            "caption": "Extracts useful text from a given URL",
+            "key": "crawler_agent",
+        },
+        {
+            "url": "icons/indexer_avatar.png",
+            "size": 40,
+            "title": "IndexerAgent",
+            "caption": "Organizes content into tagged categories",
+            "key": "indexer_agent",
+        },
+        {
+            "url": "icons/faq_generator_avatar.png",
+            "size": 40,
+            "title": "FAQGeneratorAgent",
+            "caption": "Generates helpful Q&A pairs for each category",
+            "key": "faq_generator_agent",
+        },
+        {
+            "url": "icons/verifier_avatar.png",
+            "size": 40,
+            "title": "VerifierAgent",
+            "caption": "Polishes and validates the final Q&A content",
+            "key": "verifier_agent",
+        },
+        {
+            "url": "icons/system_avatar.png",
+            "size": 40,
+            "title": "System",
+            "caption": "Handles system-level operations",
+            "key": "system",
+        },
+          {
+            "url": "icons/unknown_avatar.png",
+            "size": 40,
+            "title": "Unknown",
+            "caption": "Handles system-level operations",
+            "key": "Unknown",
+        },
+    ]
+
+st.sidebar.markdown("### Agents and their Roles")
+for agent in agent_avatars:
+    # Display the avatar image
+    st.sidebar.image(agent["url"], width=40)
+    # Display the title and caption
+    st.sidebar.markdown(f"**{agent['title']}**: {agent['caption']}") 
 
 # Button to start the conversation  
 if st.button("Run task"):  
     st.write("Running the task...")  
   
-    # Define agent avatars  
-    agent_avatars = {  
-        "ProjectPlanner": "👨‍💼",  
-        "CrawlerAgent": "💂‍♀️",  
-        "IndexerAgent": "👩‍✈️",  
-        "FAQGeneratorAgent": "🦸‍♂️",  
-        "VerifierAgent": "👩‍🚒",
-        "System": "⚙",  
-        "Unknown": "❓"  
-    }  
+    # # Define agent avatars  
+    # agent_avatars = {  
+    #     "ProjectPlanner": "👨‍💼",  
+    #     "CrawlerAgent": "💂‍♀️",  
+    #     "IndexerAgent": "👩‍✈️",  
+    #     "FAQGeneratorAgent": "🦸‍♂️",  
+    #     "VerifierAgent": "👩‍🚒",
+    #     "System": "⚙",  
+    #     "Unknown": "❓"  
+    # }  
   
+    
+    
     async def run_conversation():  
         terminated = False  
         try:  
@@ -202,18 +282,19 @@ if st.button("Run task"):
                     if "TERMINATE" in content:  
                         terminated = True  
     
-                    # Check for error messages from the fetch_url_text_tool
-                    if content.startswith("Error:"):
-                        with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):
-                            st.error(content)
-                    else:
-                        with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):
-                            st.write(content)
-
+                    # Display messages with avatars
+                    with st.chat_message(sender):
+                        avatar_url = next((a["url"] for a in agent_avatars if a["title"] == sender), None)
+                        if avatar_url:
+                            st.image(avatar_url, width=40)
+                        st.write(content)
     
                 # Handle tool calls  
                 elif hasattr(message, "tool_calls") and message.tool_calls:  
-                    with st.chat_message(sender, avatar=agent_avatars.get(sender, "❓")):  
+                    with st.chat_message(sender):  
+                        avatar_url = next((a["url"] for a in agent_avatars if a["title"] == sender), None)
+                        if avatar_url:
+                            st.image(avatar_url, width=40)
                         for tool_call in message.tool_calls:  
                             function_name = tool_call.function.name  
                             function_args = tool_call.function.arguments  
@@ -223,7 +304,10 @@ if st.button("Run task"):
                 # Explicitly handle TaskResult messages  
                 elif message.__class__.__name__ == "TaskResult":  
                     terminated = True  
-                    with st.chat_message("System", avatar=agent_avatars.get("System")):  
+                    with st.chat_message("System"):  
+                        avatar_url = next((a["url"] for a in agent_avatars if a["title"] == "System"), None)
+                        if avatar_url:
+                            st.image(avatar_url, width=40)
                         st.success("✅ Task Completed Successfully!")  
                         st.markdown(f"**Stop reason:** {message.stop_reason}")  
                         st.markdown("**Conversation Summary:**")  
@@ -236,14 +320,20 @@ if st.button("Run task"):
     
                 else:  
                     # Fallback for any other unexpected message types  
-                    with st.chat_message("System", avatar=agent_avatars.get("System")):  
+                    with st.chat_message("System"):  
+                        avatar_url = next((a["url"] for a in agent_avatars if a["title"] == "System"), None)
+                        if avatar_url:
+                            st.image(avatar_url, width=40)
                         st.warning(f"⚠️ Received an unexpected message type: {message.type}")  
     
             if terminated:  
-                with st.chat_message("System", avatar=agent_avatars.get("System")):  
+                with st.chat_message("System"):  
+                    avatar_url = next((a["url"] for a in agent_avatars if a["title"] == "System"), None)
+                    if avatar_url:
+                        st.image(avatar_url, width=40)
                     st.success("✅ Conversation fully completed.")  
     
         except Exception as e:  
             st.error(f"An error occurred: {e}")  
     # Execute the async conversation function  
-    asyncio.run(run_conversation())  
+    asyncio.run(run_conversation())
