@@ -35,7 +35,7 @@ if model_choice == "Azure":
         "https://cognitiveservices.azure.com/.default",  
     )  
     model_client = AzureOpenAIChatCompletionClient(  
-          azure_deployment=os.getenv("OPENAI_API_MODEL"),
+        azure_deployment=os.getenv("OPENAI_API_MODEL"),
         model=os.getenv("OPENAI_API_MODEL"),  
         api_version=os.getenv("OPENAI_API_VERSION"),
         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),  
@@ -81,10 +81,10 @@ project_planner = AssistantAgent(
     model_client=model_client,
     description="An agent for planning tasks, this agent should be the first to engage when given a new task.",
     system_message="""
-    You are a planning agent. Always mention what's your role.
+    You are a planning agent.
     You only plan and delegate tasks - you do not execute them yourself. You can engage team members multiple times so that a perfect Joke is provided.
     Your team members are CrawlerAgent, indexer, FAQ_generator, and verifier.    
-    After assigning tasks, wait for responses from the agents and ensure all subtasks are completed. After all tasks are complete, summarize the findings and end with "TERMINATE". Do not mention "TERMINATE" before that.
+    After assigning tasks, wait for responses from the agents, handover tasks between agents, and ensure all subtasks are completed. After all tasks are complete, summarize the findings and end with "TERMINATE". Do not mention "TERMINATE" before that.
     """           
 )
 
@@ -92,26 +92,26 @@ project_planner = AssistantAgent(
 crawler = AssistantAgent(
     name="CrawlerAgent",
     model_client=model_client,
-    system_message="You are responsible for extracting useful text from a given URL using the fetch_url_text tool. Always mention what's your role and how you will address the current task.",
+    system_message="You are responsible for extracting useful text from a given URL using the fetch_url_text tool. ",
     tools=[fetch_url_text]  # 👈 tool added here
 )
 
 indexer = AssistantAgent(
     name="IndexerAgent",
     model_client=model_client,
-    system_message="You organize content into tagged categories and prepare it for Q&A generation. Always mention what's your role and how you will address the current task."
+    system_message="You organize content into tagged categories and prepare it for Q&A generation. "
 )
 
 FAQ_generator = AssistantAgent(
     name="FAQGeneratorAgent",
     model_client=model_client,
-    system_message="You generate helpful Q&A pairs for each category. Always mention what's your role and how you will address the current task."
+    system_message="You generate helpful Q&A pairs for each category. "
 )
 
 verifier = AssistantAgent(
     name="VerifierAgent",
     model_client=model_client,
-    system_message="You polish, deduplicate, and validate the final Q&A content. Always mention what's your role and how you will address the current task."
+    system_message="You polish, deduplicate, and validate the final Q&A content. "
 )
 
 
@@ -140,7 +140,7 @@ task = f"""
 
     Use the fetch_url_text tool to retrieve the content, then analyze it.
 
-    Break down into categories and generate Q&A pairs like:
+    Break down into categories and generate Q&A pairs like in json format:
     [
         {{
             "category": "Overview",

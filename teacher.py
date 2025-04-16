@@ -38,6 +38,7 @@ model_client = OpenAIChatCompletionClient(
         api_type="gemini",
 )
 
+print(model_client)
 
 def fetch_url_text_tool(url: str) -> str:
     """Fetch the main text content from a webpage."""    
